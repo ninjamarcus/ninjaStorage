@@ -1,0 +1,6 @@
+If you are testing locally and are getting oauth2 errors try
+'gcloud auth application-default login'
+
+The below gives a nice explanation.
+
+https://thornelabs.net/posts/resolve-google-cloud-api-oauth2-cannot-fetch-token-invalid-grant-error/
