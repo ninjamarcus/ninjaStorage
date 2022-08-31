@@ -67,8 +67,13 @@ func (g *GCPFS) Delete(filePath string) error {
 }
 
 func (g *GCPFS) Move(filePathFrom string, filePathTo string) error {
-	//TODO implement me
-	panic("implement me")
+	if err := g.Copy(filePathFrom, filePathTo); err != nil {
+		return fmt.Errorf("could not move/copy file from:%s to:%s reason: %v", filePathFrom, filePathTo, err)
+	}
+	if err := g.Delete(filePathFrom); err != nil {
+		return fmt.Errorf("could not move/delete file:%s reason: %v", filePathFrom, err)
+	}
+	return nil
 }
 
 func (g *GCPFS) Copy(filePathFrom string, filePathTo string) error {
