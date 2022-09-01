@@ -1,9 +1,9 @@
 package ninjaStorage
 
 import (
-	"ninjaStorage/gcpFS"
-	"ninjaStorage/localFS"
-	"ninjaStorage/models"
+	"github.com/ninjamarcus/ninjaStorage/gcpFS"
+	"github.com/ninjamarcus/ninjaStorage/localFS"
+	"github.com/ninjamarcus/ninjaStorage/models"
 )
 
 // NewStorageObj baseFolder is the folder with which all further writes will exist

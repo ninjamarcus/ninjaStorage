@@ -1,8 +1,8 @@
 package localFS
 
 import (
-	ninjaStorage "ninjaStorage/Interfaces"
-	"ninjaStorage/models"
+	ninjaStorage "github.com/ninjamarcus/ninjaStorage/Interfaces"
+	"github.com/ninjamarcus/ninjaStorage/models"
 )
 
 type LocalFS struct {

@@ -1,6 +1,8 @@
 package ninjaStorage
 
-import "ninjaStorage/models"
+import (
+	"github.com/ninjamarcus/ninjaStorage/models"
+)
 
 type FileOperations interface {
 	Write(data []byte, filePath string, metaData *models.FileMetaData) error

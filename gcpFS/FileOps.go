@@ -6,10 +6,10 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	ninjaStorage "github.com/ninjamarcus/ninjaStorage/Interfaces"
+	"github.com/ninjamarcus/ninjaStorage/models"
 	"google.golang.org/api/iterator"
 	"io"
-	ninjaStorage "ninjaStorage/Interfaces"
-	"ninjaStorage/models"
 	"path"
 	"time"
 )

@@ -3,8 +3,8 @@ package main
 import (
 	"crypto/md5"
 	"fmt"
-	"ninjaStorage"
-	"ninjaStorage/models"
+	"github.com/ninjamarcus/ninjaStorage"
+	"github.com/ninjamarcus/ninjaStorage/models"
 	"path"
 )
 
