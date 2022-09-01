@@ -3,9 +3,9 @@ package main
 import (
 	"crypto/md5"
 	"fmt"
+	"ninjaStorage"
+	"ninjaStorage/models"
 	"path"
-	ninjaStorage "storage"
-	"storage/models"
 )
 
 func main() {
@@ -46,7 +46,7 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("cannot retrieve data from bucket: %v", err))
 	}
-	
+
 	for key, value := range result {
 		fmt.Printf("\t %v = %v\n", key, value)
 	}

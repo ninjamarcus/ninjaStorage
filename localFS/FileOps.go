@@ -1,12 +1,12 @@
 package localFS
 
 import (
-	storage "storage/Interfaces"
-	"storage/models"
+	ninjaStorage "ninjaStorage/Interfaces"
+	"ninjaStorage/models"
 )
 
 type LocalFS struct {
-	storage.FileOperations
+	ninjaStorage.FileOperations
 }
 
 func NewLocalStorage(fs *models.LOCALFSConfig) (*LocalFS, error) {

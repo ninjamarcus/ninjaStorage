@@ -8,13 +8,14 @@ import (
 	"fmt"
 	"google.golang.org/api/iterator"
 	"io"
+	ninjaStorage "ninjaStorage/Interfaces"
+	"ninjaStorage/models"
 	"path"
-	ninjaStorage "storage/Interfaces"
-	"storage/models"
 	"time"
 )
 
 type GCPFS struct {
+	//storage is the gcp stoage clietn
 	client *storage.Client
 	config *models.GCPFSConfig
 	ctx    context.Context
