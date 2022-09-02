@@ -102,7 +102,7 @@ func (g *GCPFS) Find() {
 	panic("implement me")
 }
 
-func (g *GCPFS) Write(data []byte, filePath string, metaData *models.FileMetaData) error {
+func (g *GCPFS) Write(data []byte, filePath string, metaData *models.FileMetaData) (*models.FileMetaData, error) {
 	buf := bytes.NewBuffer(data)
 	ctx, cancel := context.WithTimeout(g.ctx, time.Second*50)
 	defer cancel()
@@ -113,15 +113,20 @@ func (g *GCPFS) Write(data []byte, filePath string, metaData *models.FileMetaDat
 	wc := o.NewWriter(ctx)
 	wc.ChunkSize = 0
 	if _, err := io.Copy(wc, buf); err != nil {
-		return fmt.Errorf("io.Copy error: %v", err)
+		return nil, fmt.Errorf("io.Copy error: %v", err)
 	}
 	if err := wc.Close(); err != nil {
-		return fmt.Errorf("Writer.Close error: %v", err)
+		return nil, fmt.Errorf("Writer.Close error: %v", err)
 	}
 	if err := g.writeMetadata(o, metaData); err != nil {
-		return fmt.Errorf("error writing metadata: %v", err)
+		return nil, fmt.Errorf("error writing metadata: %v", err)
 	}
-	return nil
+	attrs, err := o.Attrs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("could not retrieve object attributes: %v", err)
+	}
+
+	return g.parseMetaData(attrs), nil
 }
 
 func (g *GCPFS) writeMetadata(handle *storage.ObjectHandle, metaData *models.FileMetaData) error {
@@ -161,7 +166,7 @@ func (g *GCPFS) List(prefix string) (map[string]*models.FileMetaData, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Bucket(%s).Objects: %v", g.config.BucketName, err)
 		}
-		results[attrs.Name] = parseMetaData(attrs)
+		results[attrs.Name] = g.parseMetaData(attrs)
 	}
 	return results, nil
 }
@@ -169,7 +174,7 @@ func (g *GCPFS) List(prefix string) (map[string]*models.FileMetaData, error) {
 // Take in the metadata/attributes from the file and convert them into a our metadata object.
 // TODO: do I need to map this to my own struture or  can I just return googles stuff and somewhere return an interface
 // To maintain its generic structure??
-func parseMetaData(attrs *storage.ObjectAttrs) *models.FileMetaData {
+func (g *GCPFS) parseMetaData(attrs *storage.ObjectAttrs) *models.FileMetaData {
 	return &models.FileMetaData{
 		Bucket:       attrs.Bucket,
 		Md5Hash:      hex.EncodeToString(attrs.MD5[:]),
@@ -181,22 +186,26 @@ func parseMetaData(attrs *storage.ObjectAttrs) *models.FileMetaData {
 	}
 }
 
-func (g *GCPFS) Read(filePath string) ([]byte, error) {
+func (g *GCPFS) Read(filePath string) ([]byte, *models.FileMetaData, error) {
 	ctx, cancel := context.WithTimeout(g.ctx, time.Second*50)
 	defer cancel()
 	fullPath := path.Join(g.config.ParentFolder, filePath)
-	rc, err := g.client.Bucket(g.config.BucketName).Object(fullPath).NewReader(ctx)
+	objHandle := g.client.Bucket(g.config.BucketName).Object(fullPath)
+	rc, err := objHandle.NewReader(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("object(%s) cannot be read: %v", fullPath, err)
+		return nil, nil, fmt.Errorf("object(%s) cannot be read: %v", fullPath, err)
 	}
 	defer rc.Close()
 
 	data, err := io.ReadAll(rc)
 	if err != nil {
-		return nil, fmt.Errorf("io.ReadAll failure: %v", err)
+		return nil, nil, fmt.Errorf("io.ReadAll failure: %v", err)
 	}
+	attrs, err := objHandle.Attrs(ctx)
+	if err != nil {
 
-	return data, nil
+	}
+	return data, g.parseMetaData(attrs), nil
 }
 
 var _ ninjaStorage.FileOperations = (*GCPFS)(nil)

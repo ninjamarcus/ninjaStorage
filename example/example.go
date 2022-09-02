@@ -19,15 +19,20 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("failed to connect to bucket: %v", err))
 	}
-	//Write
 	b := []byte("hello world")
 	filePath := "testdir/test.data"
+	//Write
 	metaData := &models.FileMetaData{UserMetaData: map[string]string{"Test": "metadata"}}
-	if err = store.Write(b, filePath, metaData); err != nil {
+
+	mdata, err := store.Write(b, filePath, metaData)
+	if err != nil {
 		panic(fmt.Sprintf("cannot write data to bucket: %v", err))
 	}
+	fmt.Printf("Written md5sum: %s \n", mdata.Md5Hash)
+
 	//Read
-	data, err := store.Read(filePath)
+	data, mdata, err := store.Read(filePath)
+	fmt.Printf("read filename From Metadata: %s \n", mdata.Name)
 	if err != nil {
 		panic(fmt.Sprintf("cannot read data from bucket: %v", err))
 	}
