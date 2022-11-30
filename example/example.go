@@ -28,7 +28,7 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("cannot write data to bucket: %v", err))
 	}
-	fmt.Printf("Written md5sum: %s \n", mdata.Md5Hash)
+	fmt.Printf("Written date: %s \n", mdata.TimeCreated)
 
 	//Read
 	data, mdata, err := store.Read(filePath)

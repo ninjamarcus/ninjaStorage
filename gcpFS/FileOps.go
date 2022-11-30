@@ -15,7 +15,7 @@ import (
 )
 
 type GCPFS struct {
-	//storage is the gcp stoage clietn
+	//storage is the gcp storage client
 	client *storage.Client
 	config *models.GCPFSConfig
 	ctx    context.Context
@@ -103,6 +103,14 @@ func (g *GCPFS) Find() {
 }
 
 func (g *GCPFS) Write(data []byte, filePath string, metaData *models.FileMetaData) (*models.FileMetaData, error) {
+
+	if len(data) == 0 {
+		return nil, fmt.Errorf("length of data is 0 nothing to write")
+	}
+	if filePath == "" {
+		return nil, fmt.Errorf("Filepath cannot be empty")
+	}
+
 	buf := bytes.NewBuffer(data)
 	ctx, cancel := context.WithTimeout(g.ctx, time.Second*50)
 	defer cancel()
@@ -150,7 +158,7 @@ func (g *GCPFS) writeMetadata(handle *storage.ObjectHandle, metaData *models.Fil
 	return nil
 }
 
-// List TODO, we might have to disable the with metadata bit for speed but I will remain opimistic.
+// List TODO, we might have to disable the with metadata bit for speed but I will remain optimistic.
 func (g *GCPFS) List(prefix string) (map[string]*models.FileMetaData, error) {
 	results := make(map[string]*models.FileMetaData)
 	ctx, cancel := context.WithTimeout(g.ctx, time.Second*10)
