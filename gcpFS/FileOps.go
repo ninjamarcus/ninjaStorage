@@ -27,16 +27,12 @@ func NewGCPStorage(fs *models.GCPFSConfig) (*GCPFS, error) {
 	if err := fs.Validate(); err != nil {
 		return &GCPFS{}, err
 	}
-
 	g := &GCPFS{config: fs}
-	if err := g.connectToGCPStorage(); err != nil {
-		return &GCPFS{}, err
-	}
 	return g, nil
 }
 
 // Connect to the client
-func (g *GCPFS) connectToGCPStorage() error {
+func (g *GCPFS) ConnectToGCPStorage() error {
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx)
 	if err != nil {
