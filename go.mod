@@ -1,4 +1,4 @@
-module github.com/David-Orson/ninjaStorage
+module github.com/ninjamarcus/ninjaStorage
 
 go 1.18
 
