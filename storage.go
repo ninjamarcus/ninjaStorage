@@ -7,10 +7,10 @@ import (
 )
 
 // NewStorageObj baseFolder is the folder with which all further writes will exist
-func NewStorageGCP(fs *models.GCPFSConfig) (*gcpFS.GCPFS, error) {
-	return gcpFS.NewGCPStorage(fs)
+func NewStorageGCP(config *models.GCPFSConfig) (*gcpFS.GCPFS, error) {
+	return gcpFS.NewGCPStorage(config)
 }
 
-func NewStorageLocal(fs *models.LOCALFSConfig) (*localFS.LocalFS, error) {
-	return localFS.NewLocalStorage(fs)
+func NewStorageLocal(config *models.LocalFSConfig) (*localFS.LocalFS, error) {
+	return localFS.NewLocalStorage(config)
 }

@@ -5,6 +5,7 @@ import (
 )
 
 type FileOperations interface {
+	Connect() error
 	Write(data []byte, filePath string, metaData *models.FileMetaData) (*models.FileMetaData, error)
 	Delete(filePath string) error
 	Move(filePathFrom string, filePathTo string) error
