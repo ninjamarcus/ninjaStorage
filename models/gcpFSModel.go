@@ -10,16 +10,15 @@ type GCPFSConfig struct {
 	*FS
 }
 
-func (g *GCPFSConfig) Validate() error {
-	if g.ParentFolder == "" {
+func (config *GCPFSConfig) Validate() error {
+	if config.ParentFolder == "" {
 		return errors.New("ParentFolder has not been set")
 	}
-	if g.BucketName == "" {
+	if config.BucketName == "" {
 		return errors.New("BucketName has not been set")
 	}
-
-	if g.ProjectID == "" {
-		//return errors.New("ProjectID has not been set")
-	}
+	// if config.ProjectID == "" {
+	//	return errors.New("ProjectID has not been set")
+	// }
 	return nil
 }

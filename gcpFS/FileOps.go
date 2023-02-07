@@ -10,58 +10,47 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
-	"github.com/ninjamarcus/ninjaStorage/models"
 	"google.golang.org/api/iterator"
+
+	_ "github.com/ninjamarcus/ninjaStorage/Interfaces" /*ninjaStorage*/
+	"github.com/ninjamarcus/ninjaStorage/models"
 )
 
 type GCPFS struct {
-	//storage is the gcp storage client
+	//storage is the GCP storage client
 	client *storage.Client
 	config *models.GCPFSConfig
 	ctx    context.Context
 }
 
-type GCPControls interface {
-	NewGCPStorage(fs *models.GCPFSConfig) (*GCPFS, error)
-	Delete(g *GCPFS, filePath string) error
-	Move(g *GCPFS, filePathFrom string, filePathTo string) error
-	Copy(g *GCPFS, filePathFrom string, filePathTo string) error
-	Find()
-	Write(g *GCPFS, data []byte, filePath string, metaData *models.FileMetaData) (*models.FileMetaData, error)
-	List(g *GCPFS, prefix string) (map[string]*models.FileMetaData, error)
-	Read(g *GCPFS, filePath string) ([]byte, *models.FileMetaData, error)
-}
-
-type GCPController struct{}
-
 // NewGCPStorage TO Connect successfully you need to have exported your service account.json file
 // as the environment variable GOOGLE_APPLICATION_CREDENTIALS
-func (gcp *GCPController) NewGCPStorage(fs *models.GCPFSConfig) (*GCPFS, error) {
-	if err := fs.Validate(); err != nil {
-		return &GCPFS{}, err
-	}
-	gcpfs := &GCPFS{config: fs}
-	if err := gcpfs.connectToGCPStorage(); err != nil {
+func NewGCPStorage(config *models.GCPFSConfig) (*GCPFS, error) {
+	if err := config.Validate(); err != nil {
 		return &GCPFS{}, err
 	}
 
-	return gcpfs, nil
+	g := &GCPFS{config: config}
+	if err := g.Connect(); err != nil {
+		return &GCPFS{}, err
+	}
+	return g, nil
 }
 
-// Connect to the client
-func (g *GCPFS) connectToGCPStorage() error {
+// Connect to the GCP client
+func (g *GCPFS) Connect() error {
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return err
 	}
-	g.client = client
 	g.ctx = ctx
-	defer client.Close()
+	g.client = client
+	client.Close()
 	return nil
 }
 
-func (gcp *GCPController) Delete(g *GCPFS, filePath string) error {
+func (g *GCPFS) Delete(filePath string) error {
 	ctx, cancel := context.WithTimeout(g.ctx, time.Second*10)
 	defer cancel()
 	fullPath := path.Join(g.config.ParentFolder, filePath)
@@ -80,17 +69,17 @@ func (gcp *GCPController) Delete(g *GCPFS, filePath string) error {
 
 }
 
-func (gcp *GCPController) Move(g *GCPFS, filePathFrom string, filePathTo string) error {
-	if err := gcp.Copy(g, filePathFrom, filePathTo); err != nil {
+func (g *GCPFS) Move(filePathFrom string, filePathTo string) error {
+	if err := g.Copy(filePathFrom, filePathTo); err != nil {
 		return fmt.Errorf("could not move/copy file from:%s to:%s reason: %v", filePathFrom, filePathTo, err)
 	}
-	if err := gcp.Delete(g, filePathFrom); err != nil {
+	if err := g.Delete(filePathFrom); err != nil {
 		return fmt.Errorf("could not move/delete file:%s reason: %v", filePathFrom, err)
 	}
 	return nil
 }
 
-func (gcp *GCPController) Copy(g *GCPFS, filePathFrom string, filePathTo string) error {
+func (g *GCPFS) Copy(filePathFrom string, filePathTo string) error {
 
 	if filePathFrom == filePathTo {
 		return fmt.Errorf("the filePathFrom: %s, cannot be the same as filePathTo: %s", filePathFrom, filePathTo)
@@ -110,12 +99,12 @@ func (gcp *GCPController) Copy(g *GCPFS, filePathFrom string, filePathTo string)
 	return nil
 }
 
-func (gcp *GCPController) Find() {
+func (g *GCPFS) Find() {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (gcp *GCPController) Write(g *GCPFS, data []byte, filePath string, metaData *models.FileMetaData) (*models.FileMetaData, error) {
+func (g *GCPFS) Write(data []byte, filePath string, metaData *models.FileMetaData) (*models.FileMetaData, error) {
 
 	if len(data) == 0 {
 		return nil, fmt.Errorf("length of data is 0 nothing to write")
@@ -139,7 +128,7 @@ func (gcp *GCPController) Write(g *GCPFS, data []byte, filePath string, metaData
 	if err := wc.Close(); err != nil {
 		return nil, fmt.Errorf("Writer.Close error: %v", err)
 	}
-	if err := gcp.writeMetadata(g, o, metaData); err != nil {
+	if err := g.writeMetadata(o, metaData); err != nil {
 		return nil, fmt.Errorf("error writing metadata: %v", err)
 	}
 	attrs, err := o.Attrs(ctx)
@@ -150,7 +139,7 @@ func (gcp *GCPController) Write(g *GCPFS, data []byte, filePath string, metaData
 	return g.parseMetaData(attrs), nil
 }
 
-func (gcp *GCPController) writeMetadata(g *GCPFS, handle *storage.ObjectHandle, metaData *models.FileMetaData) error {
+func (g *GCPFS) writeMetadata(handle *storage.ObjectHandle, metaData *models.FileMetaData) error {
 
 	if len(metaData.UserMetaData) == 0 {
 		return nil
@@ -172,7 +161,7 @@ func (gcp *GCPController) writeMetadata(g *GCPFS, handle *storage.ObjectHandle, 
 }
 
 // List TODO, we might have to disable the with metadata bit for speed but I will remain optimistic.
-func (gcp *GCPController) List(g *GCPFS, prefix string) (map[string]*models.FileMetaData, error) {
+func (g *GCPFS) List(prefix string) (map[string]*models.FileMetaData, error) {
 	results := make(map[string]*models.FileMetaData)
 	ctx, cancel := context.WithTimeout(g.ctx, time.Second*10)
 	defer cancel()
@@ -207,7 +196,7 @@ func (g *GCPFS) parseMetaData(attrs *storage.ObjectAttrs) *models.FileMetaData {
 	}
 }
 
-func (gcp *GCPController) Read(g *GCPFS, filePath string) ([]byte, *models.FileMetaData, error) {
+func (g *GCPFS) Read(filePath string) ([]byte, *models.FileMetaData, error) {
 	ctx, cancel := context.WithTimeout(g.ctx, time.Second*50)
 	defer cancel()
 	fullPath := path.Join(g.config.ParentFolder, filePath)
