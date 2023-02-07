@@ -2,14 +2,29 @@ package main
 
 import (
 	"crypto/md5"
+	"flag"
 	"fmt"
-	"github.com/ninjamarcus/ninjaStorage"
-	"github.com/ninjamarcus/ninjaStorage/models"
 	"path"
+
+	"github.com/ninjamarcus/ninjaStorage"
+	ninjaStorageInterfaces "github.com/ninjamarcus/ninjaStorage/Interfaces"
+	"github.com/ninjamarcus/ninjaStorage/gcpFS"
+	"github.com/ninjamarcus/ninjaStorage/localFS"
+	"github.com/ninjamarcus/ninjaStorage/models"
 )
 
-func main() {
-	//Setup
+func localSetup() *localFS.LocalFS {
+	conf := &models.LocalFSConfig{
+		FS: &models.FS{ParentFolder: "/tmp/backup/dev"},
+	}
+	store, err := ninjaStorage.NewStorageLocal(conf)
+	if err != nil {
+		panic(fmt.Sprintf("failed to connect to storage: %v", err))
+	}
+	return store
+}
+
+func gcpSetup() *gcpFS.GCPFS {
 	conf := &models.GCPFSConfig{
 		BucketName: "marks-test-backup-bucket",
 		ProjectID:  "not needed",
@@ -17,13 +32,29 @@ func main() {
 	}
 	store, err := ninjaStorage.NewStorageGCP(conf)
 	if err != nil {
-		panic(fmt.Sprintf("failed to connect to bucket: %v", err))
+		panic(fmt.Sprintf("failed to connect to storage: %v", err))
 	}
+	return store
+}
+
+func main() {
+	var local bool
+	flag.BoolVar(&local, "local", false, "use local filesystem as storage")
+	flag.Parse()
+
+	//Setup
+	var store ninjaStorageInterfaces.FileOperations
+	if local {
+		store = localSetup()
+	} else {
+		store = gcpSetup()
+	}
+
 	b := []byte("hello world")
 	filePath := "testdir/test.data"
-	//Write
 	metaData := &models.FileMetaData{UserMetaData: map[string]string{"Test": "metadata"}}
 
+	//Write
 	mdata, err := store.Write(b, filePath, metaData)
 	if err != nil {
 		panic(fmt.Sprintf("cannot write data to bucket: %v", err))
@@ -51,13 +82,12 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("cannot retrieve data from bucket: %v", err))
 	}
-
 	for key, value := range result {
-		fmt.Printf("\t %v = %v\n", key, value)
+		fmt.Printf("LIST: %v = %v\n", key, value)
 	}
+
 	//Delete
 	if err = store.Delete(copyFilePath); err != nil {
 		panic(fmt.Sprintf("cannot delete data from bucket: %v", err))
 	}
-
 }
