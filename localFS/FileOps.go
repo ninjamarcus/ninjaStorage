@@ -4,7 +4,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"strings"
 
 	_ "github.com/ninjamarcus/ninjaStorage/Interfaces" /*ninjaStorage*/
 	"github.com/ninjamarcus/ninjaStorage/models"
@@ -67,7 +66,7 @@ func (fs *LocalFS) Find() {
 	panic("implement me")
 }
 
-func (fs *LocalFS) Write(data []byte, name string, metaData *models.FileMetaData) (*models.FileMetaData, error) {
+func (fs *LocalFS) Write(data []byte, name string, metadata *models.FileMetaData) (*models.FileMetaData, error) {
 	filename := fs.getFilePath(name)
 	err := ensureParentExists(filename, 0755)
 	if err != nil {
@@ -82,26 +81,10 @@ func (fs *LocalFS) Write(data []byte, name string, metaData *models.FileMetaData
 		return nil, err
 	}
 	return result, nil
-
 }
 
 func (fs *LocalFS) List(prefix string) (map[string]*models.FileMetaData, error) {
-	list, err := os.ReadDir(fs.config.FS.ParentFolder)
-	if err != nil {
-		return nil, err
-	}
-	result := make(map[string]*models.FileMetaData)
-	for _, entry := range list {
-		name := entry.Name()
-		if strings.HasPrefix(name, prefix) {
-			metadata, err := getMetaData(name, fs.getFilePath(name))
-			if err != nil {
-				return nil, err
-			}
-			result[name] = metadata
-		}
-	}
-	return result, nil
+	return search(fs.config.FS.ParentFolder, prefix)
 }
 
 func (fs *LocalFS) Read(name string) ([]byte, *models.FileMetaData, error) {

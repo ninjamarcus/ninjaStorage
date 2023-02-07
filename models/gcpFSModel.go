@@ -17,9 +17,8 @@ func (config *GCPFSConfig) Validate() error {
 	if config.BucketName == "" {
 		return errors.New("BucketName has not been set")
 	}
-
-	if config.ProjectID == "" {
-		//return errors.New("ProjectID has not been set")
-	}
+	// if config.ProjectID == "" {
+	//	return errors.New("ProjectID has not been set")
+	// }
 	return nil
 }
