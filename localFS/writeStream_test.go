@@ -10,7 +10,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	ninjaStorage "github.com/ninjamarcus/ninjaStorage/Interfaces"
 	"github.com/ninjamarcus/ninjaStorage/models"
@@ -210,5 +213,135 @@ func TestListSkipsInProgressWriteStream(t *testing.T) {
 	}
 	if len(got) != 1 || got["1/a.bkup"] == nil {
 		t.Errorf("List = %v, want only 1/a.bkup", got)
+	}
+}
+
+func TestWriteStreamCancelBeforeCommitStoresNothing(t *testing.T) {
+	fs, dir := newTestFS(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	beforeCommit = cancel
+	defer func() { beforeCommit = func() {} }()
+
+	if _, err := fs.WriteStream(ctx, bytes.NewReader([]byte("complete stream")), "a.bkup", nil, models.WriteStreamOptions{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if files := entries(t, dir); len(files) != 0 {
+		t.Errorf("files left on disk: %v", files)
+	}
+}
+
+// stalledReader never returns until released.
+type stalledReader struct{ release chan struct{} }
+
+func (s *stalledReader) Read(p []byte) (int, error) {
+	<-s.release
+	return 0, io.EOF
+}
+
+func TestWriteStreamStalledReaderStopsAtDeadline(t *testing.T) {
+	fs, dir := newTestFS(t)
+	r := &stalledReader{release: make(chan struct{})}
+	defer close(r.release)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := fs.WriteStream(ctx, r, "a.bkup", nil, models.WriteStreamOptions{})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("err = %v, want context.DeadlineExceeded", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("WriteStream still blocked after the context's deadline")
+	}
+	if files := entries(t, dir); len(files) != 0 {
+		t.Errorf("files left on disk: %v", files)
+	}
+}
+
+func TestWriteStreamRejectsUnsafePaths(t *testing.T) {
+	fs, dir := newTestFS(t)
+	for _, name := range []string{"", "../escaped", "a/../../escaped", "/abs", `a\b`, "."} {
+		_, err := fs.WriteStream(context.Background(), bytes.NewReader([]byte("x")), name, nil, models.WriteStreamOptions{})
+		if !errors.Is(err, models.ErrInvalidPath) {
+			t.Errorf("WriteStream(%q) err = %v, want ErrInvalidPath", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(dir), "escaped")); !os.IsNotExist(err) {
+		t.Error("a file was written outside ParentFolder")
+	}
+	if files := entries(t, dir); len(files) != 0 {
+		t.Errorf("files left on disk: %v", files)
+	}
+}
+
+func TestWriteStreamLongName(t *testing.T) {
+	fs, dir := newTestFS(t)
+	name := strings.Repeat("n", 240) + ".bkup"
+	if _, err := fs.WriteStream(context.Background(), bytes.NewReader([]byte("x")), name, nil, models.WriteStreamOptions{}); err != nil {
+		t.Fatalf("WriteStream with a %d-byte name: %v", len(name), err)
+	}
+	if files := entries(t, dir); len(files) != 1 || files[0] != name {
+		t.Errorf("files on disk = %v", files)
+	}
+}
+
+func TestWriteStreamEmptyStream(t *testing.T) {
+	fs, dir := newTestFS(t)
+	md, err := fs.WriteStream(context.Background(), bytes.NewReader(nil), "empty", nil,
+		models.WriteStreamOptions{ExpectedSHA256: hexSHA(nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(dir, "empty"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() != 0 || md.Size != 0 || md.Sha256Hash != hexSHA(nil) || md.Md5Hash != hexMD5(nil) {
+		t.Errorf("size %d, metadata %+v", info.Size(), md)
+	}
+}
+
+func TestWriteStreamConcurrentWritesToSamePath(t *testing.T) {
+	fs, dir := newTestFS(t)
+	const writers = 16
+	payloads := make([][]byte, writers)
+	for i := range payloads {
+		payloads[i] = bytes.Repeat([]byte{byte('a' + i)}, 64*1024)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(p []byte) {
+			defer wg.Done()
+			if _, err := fs.WriteStream(context.Background(), bytes.NewReader(p), "same.bkup", nil,
+				models.WriteStreamOptions{ExpectedSHA256: hexSHA(p)}); err != nil {
+				t.Error(err)
+			}
+		}(payloads[i])
+	}
+	wg.Wait()
+
+	got, err := os.ReadFile(filepath.Join(dir, "same.bkup"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete := false
+	for _, p := range payloads {
+		if bytes.Equal(got, p) {
+			complete = true
+		}
+	}
+	if !complete {
+		t.Error("final file is not one complete payload")
+	}
+	if files := entries(t, dir); len(files) != 1 {
+		t.Errorf("files on disk = %v, want only the target", files)
 	}
 }

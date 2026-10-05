@@ -6,6 +6,7 @@ import (
 	"io"
 	"path"
 
+	"github.com/ninjamarcus/ninjaStorage/internal/pathcheck"
 	"github.com/ninjamarcus/ninjaStorage/internal/streamcheck"
 	"github.com/ninjamarcus/ninjaStorage/models"
 )
@@ -18,9 +19,13 @@ import (
 //
 // The deadline comes from ctx; there is no fixed timeout as there is for Write.
 // User metadata is set on the object as part of the upload.
+//
+// An error from the final Close does not prove the object is absent: if the
+// response to the request that completes the upload is lost, GCS may already
+// have stored it. Every check has passed by then.
 func (g *GCPFS) WriteStream(ctx context.Context, r io.Reader, filePath string, metaData *models.FileMetaData, opts models.WriteStreamOptions) (*models.FileMetaData, error) {
-	if filePath == "" {
-		return nil, fmt.Errorf("Filepath cannot be empty")
+	if err := pathcheck.Validate(filePath); err != nil {
+		return nil, err
 	}
 	check, err := streamcheck.New(ctx, r, opts)
 	if err != nil {
@@ -32,6 +37,10 @@ func (g *GCPFS) WriteStream(ctx context.Context, r io.Reader, filePath string, m
 
 	fullPath := path.Join(g.config.ParentFolder, filePath)
 	w := g.client.Bucket(g.config.BucketName).Object(fullPath).NewWriter(uploadCtx)
+	// ChunkSize must never be zero here. With chunking on, the client only sends
+	// the request that completes the upload after Close, so cancelling first
+	// always discards it. With chunking off, the whole object streams out in one
+	// request as it's written, and a cancel can race the end of that request.
 	w.ChunkSize = opts.ChunkSize
 	if w.ChunkSize == 0 {
 		w.ChunkSize = models.DefaultChunkSize
@@ -42,7 +51,7 @@ func (g *GCPFS) WriteStream(ctx context.Context, r io.Reader, filePath string, m
 
 	abort := func(cause error) (*models.FileMetaData, error) {
 		cancel()
-		_ = w.Close()
+		_ = w.Close() // returns the cancellation or the error already in cause
 		return nil, cause
 	}
 	if _, err := io.Copy(w, check); err != nil {
@@ -52,7 +61,7 @@ func (g *GCPFS) WriteStream(ctx context.Context, r io.Reader, filePath string, m
 		return abort(fmt.Errorf("upload of %s aborted: %w", fullPath, err))
 	}
 	if err := w.Close(); err != nil {
-		return nil, fmt.Errorf("Writer.Close error: %w", err)
+		return nil, fmt.Errorf("upload of %s failed on commit: %w", fullPath, err)
 	}
 
 	result := g.parseMetaData(w.Attrs())

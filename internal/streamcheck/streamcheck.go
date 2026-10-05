@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -17,7 +18,12 @@ import (
 )
 
 // Reader hashes everything read through it and enforces the size limits in
-// its options. It stops with the context's error once the context is done.
+// its options.
+//
+// Once ctx is done, Read returns the context's error straight away, even if a
+// read from the underlying reader is blocked: that read is left to finish in
+// the background and its data is discarded. After any error, every later Read
+// returns the same error.
 type Reader struct {
 	ctx      context.Context
 	r        io.Reader
@@ -26,6 +32,9 @@ type Reader struct {
 	sha      hash.Hash
 	md5      hash.Hash
 	n        int64
+	eof      bool
+	err      error
+	buf      []byte
 }
 
 // New validates opts and returns a Reader over r.
@@ -57,29 +66,77 @@ func New(ctx context.Context, r io.Reader, opts models.WriteStreamOptions) (*Rea
 	}, nil
 }
 
-// Read implements io.Reader.
+// Read implements io.Reader. Bytes that would take the stream over a limit are
+// never returned.
 func (c *Reader) Read(p []byte) (int, error) {
+	if c.err != nil {
+		return 0, c.err
+	}
 	if err := c.ctx.Err(); err != nil {
+		c.err = err
 		return 0, err
 	}
-	n, err := c.r.Read(p)
+	n, err := c.read(p)
 	if n > 0 {
-		c.n += int64(n)
-		if c.opts.MaxSize > 0 && c.n > c.opts.MaxSize {
-			return 0, models.ErrTooLarge
+		total := c.n + int64(n)
+		if c.opts.MaxSize > 0 && total > c.opts.MaxSize {
+			c.err = models.ErrTooLarge
+			return 0, c.err
 		}
-		if c.opts.ExpectedSize > 0 && c.n > c.opts.ExpectedSize {
-			return 0, models.ErrSizeMismatch
+		if c.opts.ExpectedSize > 0 && total > c.opts.ExpectedSize {
+			c.err = fmt.Errorf("%w: stream is longer than the expected %d bytes", models.ErrSizeMismatch, c.opts.ExpectedSize)
+			return 0, c.err
 		}
+		c.n = total
 		c.sha.Write(p[:n])
 		c.md5.Write(p[:n])
+	}
+	switch {
+	case err == io.EOF:
+		c.eof = true
+	case err != nil:
+		c.err = err
 	}
 	return n, err
 }
 
-// Verify reports whether the stream read so far satisfies the options. Call it
-// once the stream has been read to the end and before committing the write.
+type readResult struct {
+	n   int
+	err error
+}
+
+// read reads from the underlying reader, giving up when ctx is done. The read
+// itself runs in its own goroutine, into a buffer only that goroutine touches
+// until it finishes, so an abandoned read can never write into p.
+func (c *Reader) read(p []byte) (int, error) {
+	if c.ctx.Done() == nil {
+		return c.r.Read(p)
+	}
+	if len(c.buf) < len(p) {
+		c.buf = make([]byte, len(p))
+	}
+	buf := c.buf[:len(p)]
+	done := make(chan readResult, 1)
+	go func() {
+		n, err := c.r.Read(buf)
+		done <- readResult{n, err}
+	}()
+	select {
+	case res := <-done:
+		copy(p, buf[:res.n])
+		return res.n, res.err
+	case <-c.ctx.Done():
+		c.buf = nil // still owned by the abandoned read
+		return 0, c.ctx.Err()
+	}
+}
+
+// Verify reports whether the stream satisfies the options. Call it once Read
+// has returned io.EOF and before committing the write.
 func (c *Reader) Verify() error {
+	if !c.eof {
+		return errors.New("stream was not read to the end")
+	}
 	if c.opts.ExpectedSize > 0 && c.n != c.opts.ExpectedSize {
 		return fmt.Errorf("%w: got %d bytes, expected %d", models.ErrSizeMismatch, c.n, c.opts.ExpectedSize)
 	}
@@ -89,11 +146,11 @@ func (c *Reader) Verify() error {
 	return nil
 }
 
-// Size is the number of bytes read so far.
+// Size is the number of bytes returned by Read so far.
 func (c *Reader) Size() int64 { return c.n }
 
-// SHA256 is the hex-encoded SHA-256 of the bytes read so far.
+// SHA256 is the hex-encoded SHA-256 of the bytes returned by Read so far.
 func (c *Reader) SHA256() string { return hex.EncodeToString(c.sha.Sum(nil)) }
 
-// MD5 is the hex-encoded MD5 of the bytes read so far.
+// MD5 is the hex-encoded MD5 of the bytes returned by Read so far.
 func (c *Reader) MD5() string { return hex.EncodeToString(c.md5.Sum(nil)) }
