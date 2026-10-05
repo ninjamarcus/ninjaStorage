@@ -7,6 +7,7 @@ import "time"
 type FileMetaData struct {
 	Bucket       string            `json:"bucket,omitempty"`
 	Md5Hash      string            `json:"md_5_hash,omitempty"`
+	Sha256Hash   string            `json:"sha_256_hash,omitempty"` // only set by WriteStream
 	UserMetaData map[string]string `json:"user_meta_data,omitempty"`
 	Name         string            `json:"name,omitempty"`
 	Size         int64             `json:"size,omitempty"`

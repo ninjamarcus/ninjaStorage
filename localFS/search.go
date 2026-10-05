@@ -41,6 +41,9 @@ func search(directory string, prefix string) (map[string]*models.FileMetaData, e
 
 		if candidate {
 			if file.Type().IsRegular() {
+				if isWriteStreamTemp(file.Name()) {
+					continue
+				}
 				metadata, err := getMetaData(name, path.Join(directory, name))
 				if err != nil {
 					return nil, err
