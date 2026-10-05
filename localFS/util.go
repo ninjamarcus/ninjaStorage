@@ -21,9 +21,10 @@ func ensureParentExists(filename string, mode os.FileMode) error {
 
 func getMD5Sum(filename string) (string, error) {
 	input, err := os.Open(filename)
-	if input != nil {
+	if err != nil {
 		return "", err
 	}
+	defer input.Close()
 	hash := md5.New()
 	_, err = io.Copy(hash, input)
 	if err != nil {
