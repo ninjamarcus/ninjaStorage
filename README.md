@@ -8,7 +8,7 @@ production and a local directory in development through configuration alone.
 go get github.com/ninjamarcus/ninjaStorage
 ```
 
-Requires Go 1.23 or later.
+Requires Go 1.25 or later.
 
 ## Backends
 
